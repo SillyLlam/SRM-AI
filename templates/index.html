@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORB AI - SRMIST Knowledge Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: calc(100vh - 200px);
+        }
+        .message {
+            max-width: 80%;
+            margin: 10px;
+            padding: 10px 15px;
+            border-radius: 15px;
+            white-space: pre-wrap;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+        }
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: auto;
+        }
+        .typing-indicator {
+            display: inline-block;
+            padding: 10px 15px;
+            background-color: #f5f5f5;
+            border-radius: 15px;
+            margin: 10px;
+        }
+        .typing-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 3px;
+            background-color: #90a4ae;
+            border-radius: 50%;
+            animation: typing 1s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-blue-600">ORB AI</h1>
+            <p class="text-gray-600">SRMIST Knowledge Assistant</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-lg p-4">
+            <div id="chat-container" class="chat-container overflow-y-auto mb-4">
+                <div class="bot-message message">
+                    Hello! I'm ORB AI, your SRMIST Knowledge Assistant. I can help you with information about:
+                    - Campus locations and facilities
+                    - Academic programs and courses
+                    - Admission procedures
+                    - Student facilities
+                    
+                    What would you like to know about?
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <input type="text" id="user-input" 
+                       class="flex-grow p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                       placeholder="Type your question here...">
+                <button onclick="sendMessage()" 
+                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        let isWaitingForResponse = false;
+
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !isWaitingForResponse) {
+                sendMessage();
+            }
+        });
+
+        function addMessage(message, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isUser ? 'user-message message' : 'bot-message message';
+            messageDiv.textContent = message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addTypingIndicator() {
+            const indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.innerHTML = `
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            `;
+            indicator.id = 'typing-indicator';
+            chatContainer.appendChild(indicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        function formatResponse(response) {
+            if (typeof response === 'string') {
+                return response;
+            }
+            
+            if (response.formatted_answer) {
+                return response.formatted_answer;
+            }
+            
+            if (response.type === 'factual' && response.information) {
+                return Object.entries(response.information)
+                    .map(([key, value]) => {
+                        if (typeof value === 'object') {
+                            return `${key}:\n${JSON.stringify(value, null, 2)}`;
+                        }
+                        return `${key}: ${value}`;
+                    })
+                    .join('\n\n');
+            }
+            
+            return JSON.stringify(response, null, 2);
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message || isWaitingForResponse) return;
+
+            // Add user message
+            addMessage(message, true);
+            userInput.value = '';
+            
+            // Show typing indicator
+            isWaitingForResponse = true;
+            addTypingIndicator();
+
+            try {
+                // Send to backend
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: message })
+                });
+
+                const data = await response.json();
+                
+                // Remove typing indicator
+                removeTypingIndicator();
+                isWaitingForResponse = false;
+                
+                if (data.error) {
+                    addMessage(data.response || 'Sorry, I encountered an error: ' + data.error, false);
+                } else {
+                    addMessage(formatResponse(data.response), false);
+                }
+            } catch (error) {
+                // Remove typing indicator
+                removeTypingIndicator();
+                isWaitingForResponse = false;
+                
+                addMessage('Sorry, I encountered an error processing your request.', false);
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html> 
